@@ -7,10 +7,10 @@ const PORT = process.env.PORT || 3000;
 const app = new Elysia()
 .use(
   cors({
-    origin: "*",
-    allowedHeaders: ["Content-Type", "Authorization"],
-    methods: ["GET", "PUT", "POST", "DELETE"],
-    credentials: true,
+    origin: "*", // Allow all origins in development (use specific origins in production)
+    methods: ["GET", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "Authorization-Type"],
+    exposedHeaders: ["Content-Disposition"] // Important for filename
   }),
 )
   .use(SimpleBracketRoutes)

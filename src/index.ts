@@ -7,7 +7,7 @@ const PORT = process.env.PORT || 3000;
 const app = new Elysia()
 .use(
   cors({
-    origin: true,
+    origin: "*",
     allowedHeaders: ["Content-Type", "Authorization"],
     methods: ["GET", "PUT", "POST", "DELETE"],
     credentials: true,

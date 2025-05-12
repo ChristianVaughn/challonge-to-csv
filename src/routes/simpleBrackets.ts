@@ -57,6 +57,7 @@ interface ChallongeParticipantData {
   name: string;
   final_rank?: number;
   seed?: number;
+  group_player_ids?: string[];  // Array of player IDs used in group stages
 }
 
 interface MatchWithPlayers {
@@ -185,16 +186,76 @@ async function processTournamentData(tournamentId: string, apiKey: string) {
 
     // Create participant lookup by ID
     const participantMap = new Map<string, string>();
+    
+    // Also create a secondary map for group player IDs
+    const groupPlayerMap = new Map<string, string>();
+    
     participants.forEach(p => {
+      // Standard participant ID mapping
       participantMap.set(p.id, p.name);
+      
+      // Map any group player IDs to participant names if available
+      if (p.group_player_ids && Array.isArray(p.group_player_ids)) {
+        p.group_player_ids.forEach(groupId => {
+          groupPlayerMap.set(String(groupId), p.name);
+        });
+      }
     });
+    
+    // Create a general player ID mapping for all unique player IDs in all matches
+    // This will be needed for final stages
+    const allPlayerIds = new Set<string>();
+    matches.forEach(m => {
+      if (m.player1_id) allPlayerIds.add(String(m.player1_id));
+      if (m.player2_id) allPlayerIds.add(String(m.player2_id));
+    });
+    
+    // If we have exactly one player ID per participant, create 1:1 mappings
+    if (allPlayerIds.size === participants.length) {
+      const playerIdArray = Array.from(allPlayerIds);
+      
+      participants.forEach((p, index) => {
+        if (index < playerIdArray.length) {
+          const playerId = playerIdArray[index];
+          if (!groupPlayerMap.has(playerId)) {
+            groupPlayerMap.set(playerId, p.name);
+          }
+        }
+      });
+    }
 
     // Process matches with player names and essential data
     const processedMatches: MatchWithPlayers[] = matches.map(match => {
-      // Player names
-      const player1Name = match.player1_id ? participantMap.get(match.player1_id) || "Player 1" : "BYE";
-      const player2Name = match.player2_id ? participantMap.get(match.player2_id) || "Player 2" : "BYE";
-      const winnerName = match.winner_id ? participantMap.get(match.winner_id) || "Winner" : null;
+      // Add direct variable that tells us if this is a final stage match in a tournament with groups
+      const isFinalsMatch = tournament.group_stages_enabled && !match.group_id;
+
+      // Player IDs as strings for lookup
+      const player1Id = match.player1_id ? String(match.player1_id) : null;
+      const player2Id = match.player2_id ? String(match.player2_id) : null;
+      const winnerId = match.winner_id ? String(match.winner_id) : null;
+
+      // Get player names based on match type
+      let player1Name, player2Name, winnerName;
+      
+      if (isFinalsMatch) {
+        // For final stages, use the original direct approach that worked
+        player1Name = match.player1_id ? participantMap.get(match.player1_id) || "Player 1" : "BYE";
+        player2Name = match.player2_id ? participantMap.get(match.player2_id) || "Player 2" : "BYE";
+        winnerName = match.winner_id ? participantMap.get(match.winner_id) || "Winner" : null;
+      } else {
+        // For group stages and regular tournaments, use the maps
+        player1Name = player1Id ?
+          (participantMap.get(player1Id) || groupPlayerMap.get(player1Id) || "Player 1")
+          : "BYE";
+  
+        player2Name = player2Id ?
+          (participantMap.get(player2Id) || groupPlayerMap.get(player2Id) || "Player 2")
+          : "BYE";
+  
+        winnerName = winnerId ?
+          (participantMap.get(winnerId) || groupPlayerMap.get(winnerId) || "Winner")
+          : null;
+      }
 
       // Extract scores
       const { player1Score, player2Score } = extractScoresFromCsv(match);
@@ -284,16 +345,54 @@ async function processCommunityTournamentData(tournamentId: string, communityId:
 
     // Create participant lookup
     const participantMap = new Map<string, string>();
+    
+    // Also create a secondary map for group player IDs
+    const groupPlayerMap = new Map<string, string>();
+    
     participants.forEach(p => {
+      // Standard participant ID mapping
       participantMap.set(p.id, p.name);
+      
+      // Map any group player IDs to participant names if available
+      if (p.group_player_ids && Array.isArray(p.group_player_ids)) {
+        p.group_player_ids.forEach(groupId => {
+          groupPlayerMap.set(String(groupId), p.name);
+        });
+      }
     });
 
     // Process matches with player names and essential data
     const processedMatches: MatchWithPlayers[] = matches.map(match => {
-      // Player names
-      const player1Name = match.player1_id ? participantMap.get(match.player1_id) || "Player 1" : "BYE";
-      const player2Name = match.player2_id ? participantMap.get(match.player2_id) || "Player 2" : "BYE";
-      const winnerName = match.winner_id ? participantMap.get(match.winner_id) || "Winner" : null;
+      // Add direct variable that tells us if this is a final stage match in a tournament with groups
+      const isFinalsMatch = tournament.group_stages_enabled && !match.group_id;
+
+      // Player IDs as strings for lookup
+      const player1Id = match.player1_id ? String(match.player1_id) : null;
+      const player2Id = match.player2_id ? String(match.player2_id) : null;
+      const winnerId = match.winner_id ? String(match.winner_id) : null;
+
+      // Get player names based on match type
+      let player1Name, player2Name, winnerName;
+      
+      if (isFinalsMatch) {
+        // For final stages, use the original direct approach that worked
+        player1Name = match.player1_id ? participantMap.get(match.player1_id) || "Player 1" : "BYE";
+        player2Name = match.player2_id ? participantMap.get(match.player2_id) || "Player 2" : "BYE";
+        winnerName = match.winner_id ? participantMap.get(match.winner_id) || "Winner" : null;
+      } else {
+        // For group stages and regular tournaments, use the maps
+        player1Name = player1Id ?
+          (participantMap.get(player1Id) || groupPlayerMap.get(player1Id) || "Player 1")
+          : "BYE";
+  
+        player2Name = player2Id ?
+          (participantMap.get(player2Id) || groupPlayerMap.get(player2Id) || "Player 2")
+          : "BYE";
+  
+        winnerName = winnerId ?
+          (participantMap.get(winnerId) || groupPlayerMap.get(winnerId) || "Winner")
+          : null;
+      }
 
       // Extract scores
       const { player1Score, player2Score } = extractScoresFromCsv(match);
@@ -361,8 +460,7 @@ function convertToCSV(matches: MatchWithPlayers[], tournamentName: string = "Tou
     [
       'Match ID', 'Round', 'Player 1', 'Player 2',
       'Player 1 Score', 'Player 2 Score', 'Score Difference', 'Winner', 'State',
-      'Stage Name', 'Group ID', 'Play Order', 'Created At', 'Updated At',
-      'Player 1 ID', 'Player 2 ID'
+      'Stage Name', 'Play Order', 'Updated At'
     ],
     ...matches.map(match => [
       match.matchId || 'unknown',
@@ -375,12 +473,8 @@ function convertToCSV(matches: MatchWithPlayers[], tournamentName: string = "Tou
       match.winner || '',
       match.state || 'unknown',
       match.stageName || 'Main Bracket',
-      match.groupStage || '',
       match.playOrder !== null ? match.playOrder : '',
-      match.createdAt || '',
-      match.updatedAt || '',
-      match.player1Id || '',
-      match.player2Id || ''
+      match.updatedAt || ''
     ])
   ];
 

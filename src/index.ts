@@ -11,4 +11,4 @@ console.log(
   `🦊 Elysia is running at ${app.server?.hostname}:${app.server?.port}`,
 );
 
-server = app.server
+export type App = typeof app;

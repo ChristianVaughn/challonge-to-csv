@@ -1,75 +1,84 @@
 # Challonge to CSV Exporter
 
-A tool to export Challonge tournament data to CSV format.
+A simple tool to export Challonge tournament data to CSV format.
 
 ## Features
-- OAuth authentication with Challonge
-- CSV export of tournament matches and participant data
-- Support for regular tournaments and community tournaments
-- Detailed match data including scores, rounds, and tournament stages
+
+- Simple API endpoints to export tournament data to CSV
+- Support for both regular tournaments and community tournaments
+- Detailed match data including:
+  - Player names and IDs
+  - Match scores and results
+  - Round information
+  - Tournament stages (group stages vs finals)
+  - Match timestamps
 
 ## Getting Started
 
 ### Prerequisites
-- Bun runtime
-- Challonge API credentials
+
+- [Bun runtime](https://bun.sh/)
+- Challonge API key (obtained from your Challonge account)
 
 ### Installation
+
 1. Clone the repository
 2. Install dependencies:
    ```bash
    bun install
    ```
-3. Create a `.env` file with the following variables:
-   ```
-   CHALLONGE_CLIENT_ID=your_client_id
-   CHALLONGE_CLIENT_SECRET=your_client_secret
-   CHALLONGE_REDIRECT=http://localhost:3000/auth/challonge/callback
-   ```
 
 ## Development
-To start the development server run:
+
+To start the development server with auto-reload:
+
 ```bash
 bun run dev
 ```
 
-Open http://localhost:3000/ with your browser to see the result.
+The server runs at http://localhost:3000/
 
 ## Usage
 
-### Simple API Key Endpoints (Recommended)
+### API Endpoints
 
-The simplified endpoints require only your Challonge API key as a query parameter:
+#### Export Tournament Data
 
-#### Tournament Export
-- Export tournament data: `/simple-brackets/{tournamentId}?apiKey=your_challonge_api_key`
+```
+GET /simple-brackets/{tournamentId}?apiKey=your_challonge_api_key
+```
 
-#### Community Tournament Export
-- Export tournament from a subdomain/community: `/simple-brackets/{tournamentId}/community/{subdomain}?apiKey=your_challonge_api_key`
-- This accesses tournaments at `{subdomain}.challonge.com/{tournamentId}`
-- Example: `/simple-brackets/my_tourney/community/myteam?apiKey=123` gets data from `myteam.challonge.com/my_tourney`
+This endpoint fetches data for a regular tournament and returns it as a CSV file.
 
-These simplified endpoints:
-- Require only the API key - no OAuth authentication needed
-- Work directly with the Challonge API v1
-- Properly set the "Authorization" header to your API key and "Authorization-Type" to "v1"
-- Return CSV files with tournament match data
-- Support both regular and community tournaments
+- `tournamentId`: The ID or URL of the tournament on Challonge
+- `apiKey`: Your Challonge API key (required)
 
-### Legacy OAuth-based Endpoints
+#### Export Community Tournament Data
 
-#### OAuth Authentication (Browser-based)
-1. Authenticate with Challonge by visiting: `/auth/challonge`
-2. For community tournaments, you can authenticate with a specific community by visiting: `/auth/challonge/community/{communityId}`
+```
+GET /simple-brackets/{tournamentId}/community/{subdomain}?apiKey=your_challonge_api_key
+```
 
-#### OAuth Endpoints
-- After authenticating: `/brackets/{tournamentId}`
-- Community tournament data: `/brackets/{tournamentId}/community/{communityId}`
+This endpoint fetches tournament data from a Challonge community/subdomain.
 
-#### Communities
-- View all your communities: `/communities`
-- View details of a specific community: `/communities/{communityId}`
+- `tournamentId`: The ID or URL of the tournament
+- `subdomain`: The subdomain of the community (e.g., "myteam" for "myteam.challonge.com")
+- `apiKey`: Your Challonge API key (required)
 
-## Notes
-- The exported CSV includes match data with player names, scores, tournament stages, and more.
-- For community tournaments, you must log in via the community-specific authentication endpoint.
+### CSV Format
+
+The exported CSV includes the following columns:
+
+- Match ID, Round
+- Player names and IDs
+- Player scores and score difference
+- Winner information
+- Match state
+- Tournament stage information (group stages, etc.)
+- Match creation and update timestamps
+
+## Built With
+
+- [Elysia](https://elysiajs.com/) - Lightweight TypeScript framework
+- [csv-stringify](https://www.npmjs.com/package/csv-stringify) - For CSV generation
+- [Bun](https://bun.sh/) - JavaScript runtime and package manager

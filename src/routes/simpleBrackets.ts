@@ -418,6 +418,11 @@ export const SimpleBracketRoutes = new Elysia({ prefix: "/simple-brackets" })
         "Content-Type": "text/csv",
         "Content-Disposition": `attachment; filename="${safeFilename}.csv"`
       };
+          // Add CORS headers explicitly to this response
+      set.headers["Access-Control-Allow-Origin"] = "*";
+      set.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS";
+      set.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, Authorization-Type";
+      set.headers["Access-Control-Expose-Headers"] = "Content-Disposition";
 
       return csvContent;
     } catch (error) {
@@ -453,6 +458,12 @@ export const SimpleBracketRoutes = new Elysia({ prefix: "/simple-brackets" })
         "Content-Type": "text/csv",
         "Content-Disposition": `attachment; filename="${safeFilename}.csv"`
       };
+      // Add CORS headers explicitly to this response
+      set.headers["Access-Control-Allow-Origin"] = "*";
+      set.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS";
+      set.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, Authorization-Type";
+      set.headers["Access-Control-Expose-Headers"] = "Content-Disposition";
+
 
       return csvContent;
     } catch (error) {

@@ -483,6 +483,244 @@ function convertToCSV(matches: MatchWithPlayers[], tournamentName: string = "Tou
   return csvContent;
 }
 
+// Player stats interface for points calculation
+interface PlayerStats {
+  event_id: string;
+  player: string;
+  swiss_wins: number;
+  swiss_losses: number;
+  swiss_close_losses: number;
+  byes: number;
+  streak_bonus: number;
+  finals_place: number | null;
+  finals_points: number;
+  event_total: number;
+}
+
+// Calculate points for each player based on tournament matches
+function calculatePlayerPoints(tournament: ChallongeTournament, matches: MatchWithPlayers[]): PlayerStats[] {
+  // Create a map to store player statistics
+  const playerStatsMap = new Map<string, PlayerStats>();
+  
+  // Get group stage matches and final stage matches
+  const groupMatches = matches.filter(match => match.stageName === "Group Stage");
+  const finalMatches = matches.filter(match => match.stageName === "Final Stage" || match.stageName === "Main Bracket");
+  
+  // Get unique players from all matches
+  const players = new Set<string>();
+  matches.forEach(match => {
+    if (match.player1 && match.player1 !== "BYE") players.add(match.player1);
+    if (match.player2 && match.player2 !== "BYE") players.add(match.player2);
+  });
+  
+  // Initialize player stats
+  players.forEach(player => {
+    playerStatsMap.set(player, {
+      event_id: tournament.id,
+      player: player,
+      swiss_wins: 0,
+      swiss_losses: 0,
+      swiss_close_losses: 0,
+      byes: 0,
+      streak_bonus: 0,
+      finals_place: null,
+      finals_points: 0,
+      event_total: 0
+    });
+  });
+  
+  // Calculate Swiss/Group stage stats
+  if (groupMatches.length > 0) {
+    // Count number of rounds in group stage to detect byes
+    const groupRounds = new Set(groupMatches.map(match => match.round)).size;
+    
+    // Track win streaks
+    const winStreaks = new Map<string, number>();
+    
+    // Process group matches by round to accurately track streaks
+    const roundsMap = new Map<number, MatchWithPlayers[]>();
+    groupMatches.forEach(match => {
+      if (!roundsMap.has(match.round)) {
+        roundsMap.set(match.round, []);
+      }
+      roundsMap.get(match.round)?.push(match);
+    });
+    
+    // Process rounds in order
+    [...roundsMap.keys()].sort().forEach(round => {
+      const roundMatches = roundsMap.get(round) || [];
+      
+      roundMatches.forEach(match => {
+        if (match.state !== "complete") return;
+        
+        const player1 = match.player1;
+        const player2 = match.player2;
+        
+        if (player1 === "BYE" || player2 === "BYE") {
+          // Handle bye matches
+          const player = player1 !== "BYE" ? player1 : player2;
+          const stats = playerStatsMap.get(player);
+          if (stats) {
+            stats.byes += 1;
+            stats.swiss_wins += 1; // Count as a win for streak calculations
+            
+            // Update win streak
+            const currentStreak = winStreaks.get(player) || 0;
+            winStreaks.set(player, currentStreak + 1);
+          }
+        } else {
+          // Regular match
+          const winner = match.winner;
+          const loser = winner === player1 ? player2 : player1;
+          
+          // Update winner stats
+          if (winner) {
+            const winnerStats = playerStatsMap.get(winner);
+            if (winnerStats) {
+              winnerStats.swiss_wins += 1;
+              
+              // Update win streak
+              const currentStreak = winStreaks.get(winner) || 0;
+              winStreaks.set(winner, currentStreak + 1);
+            }
+          }
+          
+          // Update loser stats
+          if (loser) {
+            const loserStats = playerStatsMap.get(loser);
+            if (loserStats) {
+              if (match.scoreDifference !== null && match.scoreDifference <= 2) {
+                loserStats.swiss_close_losses += 1;
+              } else {
+                loserStats.swiss_losses += 1;
+              }
+              
+              // Reset win streak
+              winStreaks.set(loser, 0);
+            }
+          }
+        }
+      });
+    });
+    
+    // Calculate streak bonuses
+    players.forEach(player => {
+      const maxStreak = winStreaks.get(player) || 0;
+      const stats = playerStatsMap.get(player);
+      if (stats) {
+        // Streak bonus is 0.5 per consecutive win
+        stats.streak_bonus = Math.max(0, maxStreak - 1) * 0.5;
+      }
+    });
+    
+    // Calculate byes based on number of matches played vs total group rounds
+    players.forEach(player => {
+      const stats = playerStatsMap.get(player);
+      if (stats) {
+        const playerMatches = groupMatches.filter(
+          match => (match.player1 === player || match.player2 === player) && match.state === "complete"
+        );
+        
+        // If player played fewer matches than rounds, they had byes
+        const expectedMatches = groupRounds;
+        const actualMatches = playerMatches.length;
+        
+        // Override calculated byes
+        stats.byes = Math.max(0, expectedMatches - actualMatches);
+      }
+    });
+  }
+  
+  // Calculate finals placement and points
+  if (finalMatches.length > 0) {
+    // Get participants with final ranks
+    const finalists = tournament.participants
+      .map(p => p.participant)
+      .filter(p => p.final_rank !== undefined)
+      .sort((a, b) => (a.final_rank || 999) - (b.final_rank || 999));
+    
+    // Assign finals points based on placement
+    finalists.forEach(finalist => {
+      const playerName = finalist.name;
+      const stats = playerStatsMap.get(playerName);
+      
+      if (stats && finalist.final_rank !== undefined) {
+        stats.finals_place = finalist.final_rank;
+        
+        // Assign points based on placement
+        if (finalist.final_rank === 1) {
+          stats.finals_points = 6; // 1st place: +6 points
+        } else if (finalist.final_rank === 2) {
+          stats.finals_points = 4; // 2nd place: +4 points
+        } else if (finalist.final_rank === 3) {
+          stats.finals_points = 3; // 3rd place: +3 points
+        } else if (finalist.final_rank >= 4 && finalist.final_rank <= 8) {
+          stats.finals_points = 2; // 4th-8th place: +2 points
+        }
+      }
+    });
+  }
+  
+  // Calculate total points
+  players.forEach(player => {
+    const stats = playerStatsMap.get(player);
+    if (stats) {
+      // Swiss Rounds points
+      // Win: +3 points
+      const swissWinsPoints = stats.swiss_wins * 3;
+      
+      // Close Loss (≤2 pt difference): +1.5 points
+      const closeLossPoints = stats.swiss_close_losses * 1.5;
+      
+      // Loss: +0.5 points
+      const lossPoints = stats.swiss_losses * 0.5;
+      
+      // Consecutive Wins Bonus: +0.5 per win in a streak
+      const streakPoints = stats.streak_bonus;
+      
+      // Byes: +3 points
+      const byePoints = stats.byes * 3;
+      
+      // Finals points already calculated
+      const finalsPoints = stats.finals_points;
+      
+      // Calculate total
+      stats.event_total = swissWinsPoints + closeLossPoints + lossPoints + streakPoints + byePoints + finalsPoints;
+    }
+  });
+  
+  // Convert map to array and sort by total points (highest first)
+  return Array.from(playerStatsMap.values())
+    .sort((a, b) => b.event_total - a.event_total);
+}
+
+// Convert player stats to CSV
+function convertPlayerStatsToCSV(playerStats: PlayerStats[]): string {
+  // Add header row and data
+  const records = [
+    [
+      'Event ID', 'Player', 'Swiss Wins', 'Swiss Losses', 'Swiss Close Losses',
+      'Byes', 'Streak Bonus', 'Finals Place', 'Finals Points', 'Event Total'
+    ],
+    ...playerStats.map(stats => [
+      stats.event_id || 'unknown',
+      stats.player || 'Unknown Player',
+      stats.swiss_wins,
+      stats.swiss_losses,
+      stats.swiss_close_losses,
+      stats.byes,
+      stats.streak_bonus,
+      stats.finals_place !== null ? stats.finals_place : '',
+      stats.finals_points,
+      stats.event_total
+    ])
+  ];
+
+  // Generate CSV content
+  const csvContent = stringify(records);
+  return csvContent;
+}
+
 /**
  * Simplified endpoints for fetching tournament data using API key and exporting to CSV
  */
@@ -563,5 +801,47 @@ export const SimpleBracketRoutes = new Elysia({ prefix: "/simple-brackets" })
     } catch (error) {
       set.status = 500;
       return { error: "Failed to process community tournament data", details: error instanceof Error ? error.message : String(error) };
+    }
+  })
+
+  // Tournament points route for community tournaments (one row per player with points calculation)
+  // Example: /simple-brackets/mytourney/community/test/points
+  .get("/:tournamentId/community/:communityId/points", async ({ params, query, set }) => {
+    try {
+      const { tournamentId, communityId } = params;
+      const apiKey = query.apiKey as string;
+
+      if (!apiKey) {
+        set.status = 401;
+        return { error: "API key is required" };
+      }
+
+      const { tournament, processedMatches } = await processCommunityTournamentData(tournamentId, communityId, apiKey);
+
+      // Get tournament name if available, otherwise use the ID
+      const tournamentName = tournament?.name || `Community_Tournament_${tournamentId}`;
+
+      // Calculate player points
+      const playerStats = calculatePlayerPoints(tournament, processedMatches);
+
+      // Generate CSV
+      const csvContent = convertPlayerStatsToCSV(playerStats);
+
+      // Set headers for CSV download with a safe filename
+      const safeFilename = `Community_${communityId}_${tournamentName.replace(/[^a-z0-9]/gi, '_')}_Points`;
+      set.headers = {
+        "Content-Type": "text/csv",
+        "Content-Disposition": `attachment; filename="${safeFilename}.csv"`
+      };
+      // Add CORS headers explicitly to this response
+      set.headers["Access-Control-Allow-Origin"] = "*";
+      set.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS";
+      set.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, Authorization-Type";
+      set.headers["Access-Control-Expose-Headers"] = "Content-Disposition";
+
+      return csvContent;
+    } catch (error) {
+      set.status = 500;
+      return { error: "Failed to process community tournament points data", details: error instanceof Error ? error.message : String(error) };
     }
   });

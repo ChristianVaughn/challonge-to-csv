@@ -45,6 +45,8 @@ interface ChallongeMatchData {
   created_at: string;
   updated_at: string;
   scores_csv?: string; // Format: "number-number", ex: "5-2"
+  forfeited: boolean; // Added forfeited property
+
 }
 
 interface ChallongeParticipant {
@@ -67,16 +69,17 @@ interface MatchWithPlayers {
   player2: string;
   player1Score: number | null;
   player2Score: number | null;
-  scoreDifference: number | null;  // Added for close loss calculation
+  scoreDifference: number | null;
   winner: string | null;
   state: string;
-  groupStage: string | null;      // Group stage identifier
-  stageName: string | null;       // Stage name (e.g., "Group Stage", "Final Stage")
+  groupStage: string | null;
+  stageName: string | null;
   playOrder: number | null;
   createdAt: string;
   updatedAt: string;
   player1Id: string | null;
   player2Id: string | null;
+  forfeited: boolean; // Added forfeited property
 }
 
 // Get the appropriate API headers
@@ -186,14 +189,14 @@ async function processTournamentData(tournamentId: string, apiKey: string) {
 
     // Create participant lookup by ID
     const participantMap = new Map<string, string>();
-    
+
     // Also create a secondary map for group player IDs
     const groupPlayerMap = new Map<string, string>();
-    
+
     participants.forEach(p => {
       // Standard participant ID mapping
       participantMap.set(p.id, p.name);
-      
+
       // Map any group player IDs to participant names if available
       if (p.group_player_ids && Array.isArray(p.group_player_ids)) {
         p.group_player_ids.forEach(groupId => {
@@ -201,7 +204,7 @@ async function processTournamentData(tournamentId: string, apiKey: string) {
         });
       }
     });
-    
+
     // Create a general player ID mapping for all unique player IDs in all matches
     // This will be needed for final stages
     const allPlayerIds = new Set<string>();
@@ -209,11 +212,11 @@ async function processTournamentData(tournamentId: string, apiKey: string) {
       if (m.player1_id) allPlayerIds.add(String(m.player1_id));
       if (m.player2_id) allPlayerIds.add(String(m.player2_id));
     });
-    
+
     // If we have exactly one player ID per participant, create 1:1 mappings
     if (allPlayerIds.size === participants.length) {
       const playerIdArray = Array.from(allPlayerIds);
-      
+
       participants.forEach((p, index) => {
         if (index < playerIdArray.length) {
           const playerId = playerIdArray[index];
@@ -236,7 +239,7 @@ async function processTournamentData(tournamentId: string, apiKey: string) {
 
       // Get player names based on match type
       let player1Name, player2Name, winnerName;
-      
+
       if (isFinalsMatch) {
         // For final stages, use the original direct approach that worked
         player1Name = match.player1_id ? participantMap.get(match.player1_id) || "Player 1" : "BYE";
@@ -247,11 +250,11 @@ async function processTournamentData(tournamentId: string, apiKey: string) {
         player1Name = player1Id ?
           (participantMap.get(player1Id) || groupPlayerMap.get(player1Id) || "Player 1")
           : "BYE";
-  
+
         player2Name = player2Id ?
           (participantMap.get(player2Id) || groupPlayerMap.get(player2Id) || "Player 2")
           : "BYE";
-  
+
         winnerName = winnerId ?
           (participantMap.get(winnerId) || groupPlayerMap.get(winnerId) || "Winner")
           : null;
@@ -303,7 +306,9 @@ async function processTournamentData(tournamentId: string, apiKey: string) {
         createdAt: match.created_at,
         updatedAt: match.updated_at,
         player1Id: match.player1_id,
-        player2Id: match.player2_id
+        player2Id: match.player2_id,
+        forfeited: match.forfeited // Added forfeited property
+
       };
     });
 
@@ -345,14 +350,14 @@ async function processCommunityTournamentData(tournamentId: string, communityId:
 
     // Create participant lookup
     const participantMap = new Map<string, string>();
-    
+
     // Also create a secondary map for group player IDs
     const groupPlayerMap = new Map<string, string>();
-    
+
     participants.forEach(p => {
       // Standard participant ID mapping
       participantMap.set(p.id, p.name);
-      
+
       // Map any group player IDs to participant names if available
       if (p.group_player_ids && Array.isArray(p.group_player_ids)) {
         p.group_player_ids.forEach(groupId => {
@@ -373,7 +378,7 @@ async function processCommunityTournamentData(tournamentId: string, communityId:
 
       // Get player names based on match type
       let player1Name, player2Name, winnerName;
-      
+
       if (isFinalsMatch) {
         // For final stages, use the original direct approach that worked
         player1Name = match.player1_id ? participantMap.get(match.player1_id) || "Player 1" : "BYE";
@@ -384,11 +389,11 @@ async function processCommunityTournamentData(tournamentId: string, communityId:
         player1Name = player1Id ?
           (participantMap.get(player1Id) || groupPlayerMap.get(player1Id) || "Player 1")
           : "BYE";
-  
+
         player2Name = player2Id ?
           (participantMap.get(player2Id) || groupPlayerMap.get(player2Id) || "Player 2")
           : "BYE";
-  
+
         winnerName = winnerId ?
           (participantMap.get(winnerId) || groupPlayerMap.get(winnerId) || "Winner")
           : null;
@@ -440,7 +445,8 @@ async function processCommunityTournamentData(tournamentId: string, communityId:
         createdAt: match.created_at,
         updatedAt: match.updated_at,
         player1Id: match.player1_id,
-        player2Id: match.player2_id
+        player2Id: match.player2_id,
+        forfeited: match.forfeited
       };
     });
 
@@ -501,18 +507,18 @@ interface PlayerStats {
 function calculatePlayerPoints(tournament: ChallongeTournament, matches: MatchWithPlayers[]): PlayerStats[] {
   // Create a map to store player statistics
   const playerStatsMap = new Map<string, PlayerStats>();
-  
+
   // Get group stage matches and final stage matches
   const groupMatches = matches.filter(match => match.stageName === "Group Stage");
   const finalMatches = matches.filter(match => match.stageName === "Final Stage" || match.stageName === "Main Bracket");
-  
+
   // Get unique players from all matches
   const players = new Set<string>();
   matches.forEach(match => {
     if (match.player1 && match.player1 !== "BYE") players.add(match.player1);
     if (match.player2 && match.player2 !== "BYE") players.add(match.player2);
   });
-  
+
   // Initialize player stats
   players.forEach(player => {
     playerStatsMap.set(player, {
@@ -528,15 +534,22 @@ function calculatePlayerPoints(tournament: ChallongeTournament, matches: MatchWi
       event_total: 0
     });
   });
-  
+
   // Calculate Swiss/Group stage stats
   if (groupMatches.length > 0) {
     // Count number of rounds in group stage to detect byes
     const groupRounds = new Set(groupMatches.map(match => match.round)).size;
-    
-    // Track win streaks
+
+    // Track current win streaks and total streak bonuses
     const winStreaks = new Map<string, number>();
-    
+    const totalStreakBonuses = new Map<string, number>();
+
+    // Initialize streak tracking for all players
+    players.forEach(player => {
+      winStreaks.set(player, 0);
+      totalStreakBonuses.set(player, 0);
+    });
+
     // Process group matches by round to accurately track streaks
     const roundsMap = new Map<number, MatchWithPlayers[]>();
     groupMatches.forEach(match => {
@@ -545,74 +558,100 @@ function calculatePlayerPoints(tournament: ChallongeTournament, matches: MatchWi
       }
       roundsMap.get(match.round)?.push(match);
     });
-    
+
     // Process rounds in order
     [...roundsMap.keys()].sort().forEach(round => {
       const roundMatches = roundsMap.get(round) || [];
-      
+
       roundMatches.forEach(match => {
         if (match.state !== "complete") return;
-        
+
         const player1 = match.player1;
         const player2 = match.player2;
-        
-        if (player1 === "BYE" || player2 === "BYE") {
-          // Handle bye matches
-          const player = player1 !== "BYE" ? player1 : player2;
-          const stats = playerStatsMap.get(player);
-          if (stats) {
-            stats.byes += 1;
-            stats.swiss_wins += 1; // Count as a win for streak calculations
-            
-            // Update win streak
-            const currentStreak = winStreaks.get(player) || 0;
-            winStreaks.set(player, currentStreak + 1);
+
+        // Skip if either player is "BYE" or not available
+        if (!player1 || !player2 || player1 === "BYE" || player2 === "BYE") {
+          // Handle bye matches - only count for bye calculation later
+          return;
+        }
+
+        const winner = match.winner;
+        const loser = winner === player1 ? player2 : player1;
+
+        // Skip if no winner identified
+        if (!winner || !loser) return;
+
+        const isForfeit = match.forfeited === true;
+        console.log(match)
+        const hasScore = match.player1Score !== null && match.player2Score !== null;
+
+        // 1. BYE (no score, not a forfeit)
+        if (!isForfeit && !hasScore) {
+          // Counts only toward the "bye" tally later – no other stats
+          return;
+        }
+
+        // 2. FORFEIT
+        if (isForfeit) {
+          console.log(isForfeit)
+          console.log("we in here boyo")
+          // Winner: normal win, but NO streak increment
+          const winnerStats = playerStatsMap.get(winner);
+          if (winnerStats) {
+            console.log(winnerStats);
+            console.log("we were in hete inr the arspa")
+            winnerStats.swiss_wins += 1;
+            // Leave streak unchanged (don't increment for forfeit wins)
           }
-        } else {
-          // Regular match
-          const winner = match.winner;
-          const loser = winner === player1 ? player2 : player1;
-          
-          // Update winner stats
-          if (winner) {
-            const winnerStats = playerStatsMap.get(winner);
-            if (winnerStats) {
-              winnerStats.swiss_wins += 1;
-              
-              // Update win streak
-              const currentStreak = winStreaks.get(winner) || 0;
-              winStreaks.set(winner, currentStreak + 1);
-            }
-          }
-          
-          // Update loser stats
-          if (loser) {
-            const loserStats = playerStatsMap.get(loser);
-            if (loserStats) {
-              if (match.scoreDifference !== null && match.scoreDifference <= 2) {
-                loserStats.swiss_close_losses += 1;
-              } else {
-                loserStats.swiss_losses += 1;
-              }
-              
-              // Reset win streak
-              winStreaks.set(loser, 0);
+
+          // Loser: 0 points, streak broken; do NOT add to loss counters
+          winStreaks.set(loser, 0);
+          return; // Done with this match
+        }
+
+        // 3. PLAYED MATCH
+        const winnerStats = playerStatsMap.get(winner);
+        if (winnerStats) {
+          winnerStats.swiss_wins += 1;
+
+          // Update win streak
+          const currentStreak = winStreaks.get(winner) || 0;
+          const newStreak = currentStreak + 1;
+          winStreaks.set(winner, newStreak);
+
+          // If streak reaches 2 or more, add 0.5 to streak bonus
+          if (newStreak >= 2) {
+            // Only add bonus when reaching a new streak milestone
+            if (newStreak > currentStreak && currentStreak >= 1) {
+              const currentBonus = totalStreakBonuses.get(winner) || 0;
+              totalStreakBonuses.set(winner, currentBonus + 0.5);
             }
           }
         }
+
+        const loserStats = playerStatsMap.get(loser);
+        if (loserStats) {
+          if (match.scoreDifference !== null && match.scoreDifference <= 2) {
+            loserStats.swiss_close_losses += 1;
+          } else {
+            loserStats.swiss_losses += 1;
+          }
+
+          // Reset win streak
+          winStreaks.set(loser, 0);
+        }
       });
     });
-    
-    // Calculate streak bonuses
+
+    // Apply accumulated streak bonuses to player stats
     players.forEach(player => {
-      const maxStreak = winStreaks.get(player) || 0;
       const stats = playerStatsMap.get(player);
+      const totalBonus = totalStreakBonuses.get(player) || 0;
       if (stats) {
-        // Streak bonus is 0.5 per consecutive win
-        stats.streak_bonus = Math.max(0, maxStreak - 1) * 0.5;
+        stats.streak_bonus = totalBonus;
       }
     });
-    
+
     // Calculate byes based on number of matches played vs total group rounds
     players.forEach(player => {
       const stats = playerStatsMap.get(player);
@@ -620,33 +659,57 @@ function calculatePlayerPoints(tournament: ChallongeTournament, matches: MatchWi
         const playerMatches = groupMatches.filter(
           match => (match.player1 === player || match.player2 === player) && match.state === "complete"
         );
-        
+
         // If player played fewer matches than rounds, they had byes
-        const expectedMatches = groupRounds;
         const actualMatches = playerMatches.length;
-        
+
         // Override calculated byes
-        stats.byes = Math.max(0, expectedMatches - actualMatches);
+        stats.byes = Math.max(0, groupRounds - actualMatches);
+      }
+    });
+
+    // Wipe events for any player who never played a scored, non-forfeit game
+    players.forEach(player => {
+      const stats = playerStatsMap.get(player);
+      if (stats) {
+        const everPlayed = matches.some(
+          match => (match.player1 === player || match.player2 === player) &&
+            match.state === "complete" &&
+            match.forfeited !== true &&
+            ((match.player1Score !== null && match.player2Score !== null) ||
+              (match.scoreDifference !== null))
+        );
+
+        if (!everPlayed) {
+          // Reset all stats to 0 for players who never played a real game
+          stats.swiss_wins = 0;
+          stats.swiss_losses = 0;
+          stats.swiss_close_losses = 0;
+          stats.byes = 0;
+          stats.streak_bonus = 0;
+          stats.finals_points = 0;
+          stats.event_total = 0;
+        }
       }
     });
   }
-  
-  // Calculate finals placement and points
+
+  // Calculate finals placement and points (unchanged)
   if (finalMatches.length > 0) {
     // Get participants with final ranks
     const finalists = tournament.participants
       .map(p => p.participant)
       .filter(p => p.final_rank !== undefined)
       .sort((a, b) => (a.final_rank || 999) - (b.final_rank || 999));
-    
+
     // Assign finals points based on placement
     finalists.forEach(finalist => {
       const playerName = finalist.name;
       const stats = playerStatsMap.get(playerName);
-      
+
       if (stats && finalist.final_rank !== undefined) {
         stats.finals_place = finalist.final_rank;
-        
+
         // Assign points based on placement
         if (finalist.final_rank === 1) {
           stats.finals_points = 6; // 1st place: +6 points
@@ -654,13 +717,15 @@ function calculatePlayerPoints(tournament: ChallongeTournament, matches: MatchWi
           stats.finals_points = 4; // 2nd place: +4 points
         } else if (finalist.final_rank === 3) {
           stats.finals_points = 3; // 3rd place: +3 points
-        } else if (finalist.final_rank >= 4 && finalist.final_rank <= 8) {
+        } else if (finalist.final_rank === 4) {
           stats.finals_points = 2; // 4th-8th place: +2 points
+        } else if (finalist.final_rank >= 5 && finalist.final_rank <= 8) {
+          stats.finals_points = 1; // 4th-8th place: +2 points
         }
       }
     });
   }
-  
+
   // Calculate total points
   players.forEach(player => {
     const stats = playerStatsMap.get(player);
@@ -668,27 +733,27 @@ function calculatePlayerPoints(tournament: ChallongeTournament, matches: MatchWi
       // Swiss Rounds points
       // Win: +3 points
       const swissWinsPoints = stats.swiss_wins * 3;
-      
+
       // Close Loss (≤2 pt difference): +1.5 points
       const closeLossPoints = stats.swiss_close_losses * 1.5;
-      
+
       // Loss: +0.5 points
       const lossPoints = stats.swiss_losses * 0.5;
-      
+
       // Consecutive Wins Bonus: +0.5 per win in a streak
       const streakPoints = stats.streak_bonus;
-      
+
       // Byes: +3 points
       const byePoints = stats.byes * 3;
-      
+
       // Finals points already calculated
       const finalsPoints = stats.finals_points;
-      
+
       // Calculate total
       stats.event_total = swissWinsPoints + closeLossPoints + lossPoints + streakPoints + byePoints + finalsPoints;
     }
   });
-  
+
   // Convert map to array and sort by total points (highest first)
   return Array.from(playerStatsMap.values())
     .sort((a, b) => b.event_total - a.event_total);
@@ -750,7 +815,7 @@ export const SimpleBracketRoutes = new Elysia({ prefix: "/simple-brackets" })
         "Content-Type": "text/csv",
         "Content-Disposition": `attachment; filename="${safeFilename}.csv"`
       };
-          // Add CORS headers explicitly to this response
+      // Add CORS headers explicitly to this response
       set.headers["Access-Control-Allow-Origin"] = "*";
       set.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS";
       set.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, Authorization-Type";
